@@ -1,0 +1,140 @@
+
+
+本小节主要做的实验为完成在软件上书写完成时钟分频代码以及做初步验证，即实验目的为：
+\begin{enumerate}
+    \item 以实验平台为基础，了解并熟悉现代信号处理电路的电路构造；
+    \item 熟悉使用 IP 核的具体流程；
+    \item 熟悉时钟分频的实现原理；
+    \item 熟悉使用 Vivado 进行硬件开发的步骤，了解仿真如何在Vivado进行仿真。
+\end{enumerate}
+
+\subsection{实验原理}
+\input{theory.tex}
+
+\subsection{实验过程}
+实验步骤如下：
+\begin{enumerate}
+    \item 新建工程：器件型号按实验箱 FPGA（XC7K410T-2FFG900）选择；
+    \item 配置 Clocking Wizard IP：输入 25MHz，倍频输出 100MHz、200MHz（10MHz 可由 IP 核输出或分频模块生成）；
+    \item 编写分频模块与顶层文件：100MHz→20MHz、10MHz→1KHz（计数器翻转法，参考讲义代码框架）；
+    \item 添加约束文件：时钟约束 \texttt{create\_clock} + 引脚约束 \texttt{PACKAGE\_PIN}（25M 时钟引脚 C25，LVCMOS33）；
+    \item 行为仿真：验证分频比与占空比（注意仿真时长是否足够）；
+\end{enumerate}
+
+预期可以观察到IP核产生的100MHz，20MHz，1KHz时钟信号，以及分频模块产生的100MHz，20MHz，1KHz时钟信号的频率均正确，占空比均为50\%。
+
+一些实验过程图展示：
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figures/clk_in.png}\\[0.5em]
+    \includegraphics[width=0.75\textwidth]{figures/clk_out.png}
+    \caption{Clocking Wizard IP 配置：上图为输入时钟 25MHz，下图为输出时钟 100MHz、10MHz、200MHz}
+    \label{fig:clk_wiz}
+\end{figure}
+
+% \subsection{预期现象}
+% \input{imag.tex}
+
+用到的代码：
+
+\begin{lstlisting}[style=vcode, caption={奇数分频模块（5 分频，占空比 50\%）}, label={lst:clk_div_odd}]
+`timescale 1ns / 1ps
+
+module clk_div_odd #(
+    parameter DIV_FACTOR = 5
+)(
+    input wire clk_in,
+    input wire sys_rstn,
+    output wire clk_out
+);
+
+reg [31:0] counter;
+reg clk_pos;
+reg clk_neg;
+
+always @(posedge clk_in or negedge sys_rstn) begin
+    if (!sys_rstn) begin
+        counter <= 0;
+        clk_pos <= 0;
+    end
+    else begin
+        if (counter == DIV_FACTOR - 1)
+            counter <= 0;
+        else
+            counter <= counter + 1;
+
+        clk_pos <= (counter < (DIV_FACTOR - 1) / 2);
+    end
+end
+
+always @(negedge clk_in or negedge sys_rstn) begin
+    if (!sys_rstn)
+        clk_neg <= 0;
+    else
+        clk_neg <= clk_pos;
+end
+
+assign clk_out = clk_pos | clk_neg;
+
+endmodule
+\end{lstlisting}
+
+% 【代码2】
+
+
+\begin{lstlisting}[style=vcode, caption={偶数分频（占空比50\%）}, label={lst:clk_div_even}]
+module clk_div_even #
+(
+    parameter DIV_FACTOR = 10
+)
+(
+    clk_in,
+    sys_rstn,
+    clk_out
+);
+
+input clk_in;
+input sys_rstn;
+output reg clk_out;
+
+reg [15:0] counter;
+
+localparam COUNT = (DIV_FACTOR >> 1);
+
+always @(posedge clk_in or negedge sys_rstn) begin
+    if (!sys_rstn) begin
+        counter <= 0;
+        clk_out <= 0;
+    end
+    else if (counter == COUNT - 1) begin
+        clk_out <= ~clk_out;
+        counter <= 0;
+    end
+    else begin
+        counter <= counter + 1;
+    end
+end
+
+endmodule
+\end{lstlisting}
+
+
+
+\begin{lstlisting}[style=vcode, caption={约束文件}]
+# 25MHz board clock input
+set_property PACKAGE_PIN C25 [get_ports sys_clk]
+
+# Input I/O standard
+set_property IOSTANDARD LVCMOS33 [get_ports sys_clk]
+
+# Clock period: 40ns = 25MHz
+create_clock -name sys_clk -period 40.000 [get_ports sys_clk]
+
+\end{lstlisting}
+
+
+\subsection{实验结果}
+% 【100_10_20MHz】
+% 【100_20_10_1k】
+
